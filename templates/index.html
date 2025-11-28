@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Support Ticket Classifier</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f3f4f6;
+            color: #111827;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 28px 32px;
+            width: 520px;
+            max-width: 92vw;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+            border: 1px solid #e5e7eb;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            color: #111827;
+        }
+
+        .lead {
+            font-size: 0.95rem;
+            color: #374151;
+            margin-bottom: 0.75rem;
+        }
+
+        .section-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #4b5563;
+            margin-top: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+
+        ul {
+            margin: 0 0 0.5rem 1.1rem;
+            padding: 0;
+            font-size: 0.85rem;
+            color: #4b5563;
+        }
+
+        .helper {
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin-bottom: 0.8rem;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 110px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid #d1d5db;
+            background: #ffffff;
+            color: #111827;
+            resize: vertical;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
+        }
+
+        textarea::placeholder {
+            color: #9ca3af;
+        }
+
+        button {
+            margin-top: 1rem;
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: none;
+            cursor: pointer;
+            background: #3b82f6;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        button:hover {
+            background: #2563eb;
+        }
+
+        .hint {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-top: 0.6rem;
+        }
+
+        .result-box {
+            margin-top: 1rem;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: #f9fafb;
+            border: 1px dashed #d1d5db;
+            font-size: 0.9rem;
+        }
+
+        .label-pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-top: 4px;
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .bug    { background: #fee2e2; color: #b91c1c; }
+        .billing{ background: #d1fae5; color: #065f46; }
+        .feature_request { background: #e0e7ff; color: #4338ca; }
+
+        .result-detail {
+            margin-top: 6px;
+            font-size: 0.8rem;
+            color: #4b5563;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>Support Ticket Classifier</h1>
+
+    <p class="lead">
+        This mini tool helps you automatically understand support messages and
+        classify them into one of three categories.
+    </p>
+
+    <div class="section-title">It can recognise:</div>
+    <ul>
+        <li>Billing</li>
+        <li>Bug / technical problem</li>
+        <li>Feature request</li>
+    </ul>
+
+    <div class="section-title">How to use it:</div>
+    <ul>
+        <li>Type your issue in a full sentence, like you would send to support.</li>
+        <li>Be clear: e.g. “payment failed”, “app crashes”, “need dark mode”.</li>
+        <li>If your message is too short or unclear, it will ask you to type more.</li>
+    </ul>
+
+    <form id="ticket-form">
+        <textarea
+            name="text"
+            id="ticket-text"
+            placeholder="Example: I was double charged this month and the invoice looks wrong."
+            required
+        ></textarea>
+        <button type="submit">Classify my ticket</button>
+    </form>
+
+    <div class="hint">
+        Internally, your text is turned into TF-IDF numbers and passed into a logistic
+        regression model trained on labelled examples.
+    </div>
+
+    <div id="result" class="result-box" style="display:none;">
+        <div>Predicted category:</div>
+        <div id="label-pill" class="label-pill">–</div>
+        <div id="raw-label" class="result-detail"></div>
+    </div>
+</div>
+
+<script>
+document.getElementById("ticket-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+
+    const text = document.getElementById("ticket-text").value.trim();
+    if (!text) return;
+
+    const response = await fetch("/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+    });
+
+    const data = await response.json();
+    const resultBox = document.getElementById("result");
+    const labelPill = document.getElementById("label-pill");
+    const rawLabel  = document.getElementById("raw-label");
+
+    // reset classes
+    labelPill.className = "label-pill";
+
+    // 🔴 handle "too short / unclear" messages from the backend
+    if (data.error) {
+        labelPill.textContent = "Need more text";
+        rawLabel.textContent = data.error;
+        resultBox.style.display = "block";
+        return;
+    }
+
+    const label = data.label;
+
+    if (label === "bug") {
+        labelPill.classList.add("bug");
+        labelPill.textContent = "Bug";
+        rawLabel.textContent = "This seems like something in the product isn’t working correctly.";
+    } else if (label === "billing") {
+        labelPill.classList.add("billing");
+        labelPill.textContent = "Billing";
+        rawLabel.textContent = "This relates to charges, invoices, payments, or refunds.";
+    } else if (label === "feature_request") {
+        labelPill.classList.add("feature_request");
+        labelPill.textContent = "Feature request";
+        rawLabel.textContent = "User is asking for a new option or improvement.";
+    } else {
+        labelPill.textContent = label || "Unknown";
+        rawLabel.textContent = "";
+    }
+
+    resultBox.style.display = "block";
+});
+</script>
+
+</body>
+</html>
